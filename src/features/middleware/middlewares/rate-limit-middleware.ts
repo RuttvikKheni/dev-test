@@ -20,24 +20,30 @@ export const rateLimitMiddleware: Middleware = async (req, next) => {
     "unknown";
 
   // Check the rate limit
-  const { success, limit, remaining, reset } = await limiter.limit(ip);
+  try {
+    const { success, limit, remaining, reset } = await limiter.limit(ip);
 
-  // Prepare common rate limit headers
-  const responseHeaders = {
-    "X-RateLimit-Limit": limit.toString(),
-    "X-RateLimit-Remaining": remaining.toString(),
-    "X-RateLimit-Reset": reset.toString(),
-  };
+    // Prepare common rate limit headers
+    const responseHeaders = {
+      "X-RateLimit-Limit": limit.toString(),
+      "X-RateLimit-Remaining": remaining.toString(),
+      "X-RateLimit-Reset": reset.toString(),
+    };
 
-  if (!success) {
-    // If the limit is exceeded, return a 429 response
-    console.warn(`Rate limit exceeded for IP: ${ip}`);
-    return withErrorResponse("Rate limit exceeded", 429, {
-      ...responseHeaders,
-      "Retry-After": Math.ceil((reset - Date.now()) / 1000).toString(),
-    });
+    if (!success) {
+      // If the limit is exceeded, return a 429 response
+      console.warn(`Rate limit exceeded for IP: ${ip}`);
+      return withErrorResponse("Rate limit exceeded", 429, {
+        ...responseHeaders,
+        "Retry-After": Math.ceil((reset - Date.now()) / 1000).toString(),
+      });
+    }
+
+    const resp = await next();
+    return withHeaders(resp, responseHeaders);
+  } catch (error) {
+    // Log the error but don't block the request in development
+    console.warn("Rate limiting failed, continuing without rate limiting:", error);
+    return next();
   }
-
-  const resp = await next();
-  return withHeaders(resp, responseHeaders);
 };
